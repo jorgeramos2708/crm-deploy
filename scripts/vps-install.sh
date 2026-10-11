@@ -7,23 +7,24 @@ cd "$(dirname "$0")/.."
 test -f .env || { echo "Falta .env (copia .env.example y rellena secretos)"; exit 1; }
 test -d ../crm || { echo "Falta /opt/crm (git clone github.com/jorgeramos2708/crm.git)"; exit 1; }
 docker network inspect caddy_net >/dev/null || { echo "No existe la red caddy_net"; exit 1; }
+DC="docker compose -f docker-compose.yml -f docker-compose.vps.yml"
 
 echo "== build =="
-docker compose -f docker-compose.yml -f docker-compose.vps.yml build postgres redis api worker web
+$DC build postgres redis api worker web
 
 echo "== infra =="
-docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d postgres redis minio
+$DC up -d postgres redis minio
 for i in $(seq 1 36); do
-  docker compose exec -T postgres pg_isready -U "${POSTGRES_USER:-crm}" -d "${POSTGRES_DB:-crm}" && break
+  $DC exec -T postgres pg_isready -U "${POSTGRES_USER:-crm}" -d "${POSTGRES_DB:-crm}" && break
   sleep 5
 done
 
 echo "== migrate + seed =="
-docker compose run --rm api node dist/migrate.js
-docker compose run --rm api node dist/seed.js
+$DC run --rm api node dist/migrate.js
+$DC run --rm api node dist/seed.js
 
 echo "== app =="
-docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d api worker web
+$DC up -d api worker web
 
 echo "== caddy (existente) =="
 if ! grep -q "crm.edrs.xyz {" ~/caddy/Caddyfile; then
