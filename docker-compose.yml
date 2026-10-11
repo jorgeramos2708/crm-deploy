@@ -49,7 +49,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/127.0.0.1/9000'"]
+      test: ["CMD", "nc", "-z", "-w", "3", "127.0.0.1", "9000"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -111,6 +111,13 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER:-crm}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}@postgres:5432/${POSTGRES_DB:-crm}
       REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD requerido}@redis:6379
+      # Mismas que api: config.ts las exige en producción al importar.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requerido}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET requerido}
+      SESSION_TTL_SECONDS: 604800
+      RATE_LIMIT_MAX: 300
+      RATE_LIMIT_WINDOW_SECONDS: 60
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN requerido}
       MICROSOFT_CRYPTO_KEY: ${MICROSOFT_CRYPTO_KEY:?MICROSOFT_CRYPTO_KEY requerido}
       GRAPH_PUBLIC_URL: ${GRAPH_PUBLIC_URL:?GRAPH_PUBLIC_URL requerido}
       MINIO_ENDPOINT: minio
