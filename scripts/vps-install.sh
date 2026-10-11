@@ -12,7 +12,7 @@ echo "== build =="
 docker compose -f docker-compose.yml -f docker-compose.vps.yml build postgres redis api worker web
 
 echo "== infra =="
-docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d postgres redis
+docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d postgres redis minio
 for i in $(seq 1 36); do
   docker compose exec -T postgres pg_isready -U "${POSTGRES_USER:-crm}" -d "${POSTGRES_DB:-crm}" && break
   sleep 5
