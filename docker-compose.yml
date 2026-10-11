@@ -1,0 +1,154 @@
+name: crm
+
+# Stack de producción del CRM Varko. Sin puertos publicados: el único punto
+# de entrada es Caddy (externo en VPS via docker-compose.vps.yml, servicio
+# `edge` en servidor bare via docker-compose.bare.yml).
+# Requiere ../crm (repo app) al mismo nivel: /opt/crm + /opt/crm-deploy.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: crm-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-crm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}
+      POSTGRES_DB: ${POSTGRES_DB:-crm}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-crm} -d ${POSTGRES_DB:-crm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: crm-redis
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD requerido}"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD requerido}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: crm-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER:-crm}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:?MINIO_PASSWORD requerido}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../crm/apps/api
+      dockerfile: Dockerfile.prod
+    container_name: crm-api
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+      DATABASE_URL: postgres://${POSTGRES_USER:-crm}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}@postgres:5432/${POSTGRES_DB:-crm}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD requerido}@redis:6379
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN requerido}
+      FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL requerido}
+      SESSION_COOKIE: crm_session
+      SESSION_TTL_SECONDS: 604800
+      RATE_LIMIT_MAX: 300
+      RATE_LIMIT_WINDOW_SECONDS: 60
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET requerido}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET requerido}
+      MICROSOFT_CRYPTO_KEY: ${MICROSOFT_CRYPTO_KEY:?MICROSOFT_CRYPTO_KEY requerido}
+      GRAPH_PUBLIC_URL: ${GRAPH_PUBLIC_URL:?GRAPH_PUBLIC_URL requerido}
+      CURRENCY: ${CURRENCY:-MXN}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USER: ${MINIO_USER:-crm}
+      MINIO_PASSWORD: ${MINIO_PASSWORD:?MINIO_PASSWORD requerido}
+      MINIO_BUCKET: crm-archivos
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+
+  worker:
+    build:
+      context: ../crm/apps/api
+      dockerfile: Dockerfile.prod
+    container_name: crm-worker
+    command: ["node", "dist/worker.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-crm}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD requerido}@postgres:5432/${POSTGRES_DB:-crm}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD requerido}@redis:6379
+      MICROSOFT_CRYPTO_KEY: ${MICROSOFT_CRYPTO_KEY:?MICROSOFT_CRYPTO_KEY requerido}
+      GRAPH_PUBLIC_URL: ${GRAPH_PUBLIC_URL:?GRAPH_PUBLIC_URL requerido}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USER: ${MINIO_USER:-crm}
+      MINIO_PASSWORD: ${MINIO_PASSWORD:?MINIO_PASSWORD requerido}
+      MINIO_BUCKET: crm-archivos
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep -q '[n]ode dist/worker.js'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+
+  web:
+    build:
+      context: ../crm/apps/web
+      dockerfile: Dockerfile.vue
+      args:
+        VITE_API_URL: ""
+    container_name: crm-web
+    environment:
+      VITE_APP_NAME: Varko
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

@@ -1,0 +1,11 @@
+# Overlay VPS (109.199.103.81): expone `web` a la red del Caddy existente.
+# Uso: docker compose -f docker-compose.yml -f docker-compose.vps.yml up -d --build
+services:
+  web:
+    networks:
+      - default
+      - caddy_net
+
+networks:
+  caddy_net:
+    external: true

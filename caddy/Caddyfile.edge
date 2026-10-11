@@ -1,0 +1,25 @@
+# Caddy propio para servidor bare (sin Cloudflare): TLS automático vía LE.
+# Requiere DOMAIN en entorno + DNS A apuntando + puertos 80/443 abiertos.
+{
+        admin off
+}
+
+{$DOMAIN} {
+        encode zstd gzip
+
+        header {
+                Strict-Transport-Security "max-age=31536000; includeSubDomains"
+                X-Content-Type-Options nosniff
+                Referrer-Policy strict-origin-when-cross-origin
+                -Server
+        }
+
+        log {
+                output file /var/log/caddy/crm.access.log
+                format json
+        }
+
+        reverse_proxy web:80 {
+                flush_interval -1
+        }
+}

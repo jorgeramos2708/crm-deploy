@@ -1,0 +1,17 @@
+# Bloque para el Caddy EXISTENTE del VPS (~/caddy/Caddyfile).
+# Todo el tráfico va a crm-web:80 para preservar rate-limit nginx,
+# SSE sin buffer y headers del nginx del proyecto.
+crm.edrs.xyz {
+        import cf_only
+        import sec_headers
+        encode zstd gzip
+
+        log {
+                output file /var/log/caddy/crm.access.log
+                format json
+        }
+
+        reverse_proxy crm-web:80 {
+                flush_interval -1
+        }
+}
